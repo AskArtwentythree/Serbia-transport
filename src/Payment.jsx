@@ -1,4 +1,6 @@
 import React, { useState } from "react";
+import { connectWallet, NETWORKS, erc20Transfer, formatAmountToUnits, getProvider } from "./crypto";
+import { Contract } from "ethers";
 
 export default function Payment() {
   const [form, setForm] = useState({
@@ -12,6 +14,169 @@ export default function Payment() {
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState(null);
   const [errors, setErrors] = useState({});
+
+  // Web3 state
+  const [account, setAccount] = useState(null);
+  const [chainId, setChainId] = useState(null);
+  const [cryptoBusy, setCryptoBusy] = useState(false);
+  const [cryptoMsg, setCryptoMsg] = useState("");
+  const [orderId, setOrderId] = useState("");
+
+  const preferred = NETWORKS.polygonAmoy;
+
+  const ensurePreferredNetwork = async () => {
+    const provider = await getProvider();
+    const net = await provider.getNetwork();
+    if (Number(net.chainId) === Number(preferred.chainId)) return true;
+    try {
+      await provider.send("wallet_switchEthereumChain", [{ chainId: `0x${preferred.chainId.toString(16)}` }]);
+      return true;
+    } catch (err) {
+      // Try add network
+      try {
+        await provider.send("wallet_addEthereumChain", [{
+          chainId: `0x${preferred.chainId.toString(16)}`,
+          chainName: preferred.name,
+          rpcUrls: [preferred.rpcUrl],
+          nativeCurrency: { name: "MATIC", symbol: "MATIC", decimals: 18 },
+          blockExplorerUrls: [preferred.explorer],
+        }]);
+        return true;
+      } catch (e) {
+        setCryptoMsg("Не удалось переключить сеть в кошельке");
+        return false;
+      }
+    }
+  };
+
+  const onConnectWallet = async () => {
+    try {
+      setCryptoBusy(true);
+      const ok = await ensurePreferredNetwork();
+      if (!ok) return;
+      const { account: acc, network } = await connectWallet();
+      setAccount(acc);
+      setChainId(Number(network.chainId));
+      setCryptoMsg("Кошелёк подключен");
+    } catch (e) {
+      setCryptoMsg(e.message || "Ошибка подключения кошелька");
+    } finally {
+      setCryptoBusy(false);
+    }
+  };
+
+  const onCryptoPay = async () => {
+    setResult(null);
+    if (!account) {
+      setCryptoMsg("Сначала подключите кошелёк");
+      return;
+    }
+    const amountStr = form.amount;
+    if (!amountStr) {
+      setCryptoMsg("Введите сумму перед оплатой");
+      return;
+    }
+    try {
+      setCryptoBusy(true);
+      setCryptoMsg("Подготовка транзакции...");
+      const decimals = preferred.usdc.decimals;
+      const amount = formatAmountToUnits(amountStr, decimals);
+      const merchant = "0x000000000000000000000000000000000000dEaD"; // demo address
+      const { signer } = await connectWallet();
+      await ensurePreferredNetwork();
+      const receipt = await erc20Transfer({ signer, token: preferred.usdc.address, to: merchant, amount, decimals });
+      setCryptoMsg(`Оплачено в блокчейне. Хэш: ${receipt.hash.slice(0, 10)}...`);
+      setResult({ ok: true, message: "Крипто-оплата прошла успешно" });
+    } catch (e) {
+      setCryptoMsg(e.shortMessage || e.message || "Ошибка крипто-оплаты");
+      setResult({ ok: false, message: "Ошибка крипто-оплаты" });
+    } finally {
+      setCryptoBusy(false);
+    }
+  };
+
+  // ===== Escrow (approve + createPayment) =====
+  const ESCROW_ABI = [
+    "function createPayment(bytes32 orderId, address partner, uint256 amount)",
+    "function release(bytes32 orderId)",
+    "function refund(bytes32 orderId)",
+  ];
+
+  const onEscrowPay = async () => {
+    setResult(null);
+    if (!account) { setCryptoMsg("Сначала подключите кошелёк"); return; }
+    const amountStr = form.amount;
+    const partner = prompt("Введите адрес партнёра (рентовый сервис)", "0x000000000000000000000000000000000000dEaD");
+    if (!partner) return;
+    try {
+      setCryptoBusy(true);
+      await ensurePreferredNetwork();
+      const { signer } = await connectWallet();
+      const decimals = preferred.usdc.decimals;
+      const amount = formatAmountToUnits(amountStr, decimals);
+      // 1) Approve escrow to spend USDC
+      const erc20 = new Contract(preferred.usdc.address, ["function approve(address,uint256) returns (bool)"], signer);
+      setCryptoMsg("Подтвердите разрешение на списание USDC...");
+      await (await erc20.approve(NETWORKS.polygonAmoy.escrow.address, amount)).wait();
+      // 2) Create escrow payment
+      const escrow = new Contract(NETWORKS.polygonAmoy.escrow.address, ESCROW_ABI, signer);
+      const id = orderId || crypto.randomUUID();
+      const idBytes = `0x${Buffer.from(id).toString("hex").slice(0,64).padEnd(64,'0')}`;
+      setOrderId(id);
+      setCryptoMsg("Создание эскроу-платежа...");
+      await (await escrow.createPayment(idBytes, partner, amount)).wait();
+      setCryptoMsg("Эскроу создан. Ожидает выпуска средств.");
+      setResult({ ok: true, message: "Эскроу-платёж создан" });
+    } catch (e) {
+      setCryptoMsg(e.shortMessage || e.message || "Ошибка создания эскроу");
+      setResult({ ok: false, message: "Ошибка создания эскроу" });
+    } finally {
+      setCryptoBusy(false);
+    }
+  };
+
+  const callEscrow = async (method) => {
+    const addr = NETWORKS.polygonAmoy.escrow.address;
+    if (!addr || addr === "0x0000000000000000000000000000000000000000") {
+      alert("Сначала укажите адрес контракта Escrow в src/crypto.js");
+      return null;
+    }
+    const { signer } = await connectWallet();
+    await ensurePreferredNetwork();
+    return new Contract(addr, ESCROW_ABI, signer)[method];
+  };
+
+  const onRelease = async () => {
+    if (!orderId) { alert("Введите ID заказа"); return; }
+    try {
+      setCryptoBusy(true);
+      setCryptoMsg("Выпуск средств...");
+      const fn = await callEscrow("release");
+      const idBytes = `0x${Buffer.from(orderId).toString("hex").slice(0,64).padEnd(64,'0')}`;
+      await (await fn(idBytes)).wait();
+      setCryptoMsg("Средства выпущены по эскроу");
+    } catch (e) {
+      setCryptoMsg(e.shortMessage || e.message || "Ошибка выпуска средств");
+    } finally {
+      setCryptoBusy(false);
+    }
+  };
+
+  const onRefund = async () => {
+    if (!orderId) { alert("Введите ID заказа"); return; }
+    try {
+      setCryptoBusy(true);
+      setCryptoMsg("Возврат средств...");
+      const fn = await callEscrow("refund");
+      const idBytes = `0x${Buffer.from(orderId).toString("hex").slice(0,64).padEnd(64,'0')}`;
+      await (await fn(idBytes)).wait();
+      setCryptoMsg("Средства возвращены покупателю");
+    } catch (e) {
+      setCryptoMsg(e.shortMessage || e.message || "Ошибка возврата средств");
+    } finally {
+      setCryptoBusy(false);
+    }
+  };
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -83,12 +248,30 @@ export default function Payment() {
     <div style={{ display: "flex", width: "100vw", height: "100vh" }}>
       <div style={{ flex: 1, background: "#fff" }} />
       <div className="sidebar" style={{ width: "var(--sidebar-width)", maxWidth: "40%" }}>
-        <h2 style={{ margin: 0 }}>Оплата</h2>
-        <p>Введите данные для оплаты бронирования.</p>
+        <h2 style={{ margin: 0 }}>Payment</h2>
+        <p>Enter your details to pay for the booking.</p>
+
+        <div style={{
+          border: "1px solid var(--border-color)", padding: 12, borderRadius: 8, marginBottom: 16,
+          background: "#f8fafc"
+        }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <div>
+              <div style={{ fontWeight: 600 }}>Web3 Wallet</div>
+              <div style={{ fontSize: 12, color: "#475569" }}>
+                Network: {chainId ? chainId : "—"} | Account: {account ? `${account.slice(0,6)}...${account.slice(-4)}` : "not connected"}
+              </div>
+            </div>
+            <button type="button" onClick={onConnectWallet} disabled={cryptoBusy}>
+              {account ? "Reconnect" : "Connect wallet"}
+            </button>
+          </div>
+          {cryptoMsg && <div style={{ marginTop: 8, fontSize: 12 }}>{cryptoMsg}</div>}
+        </div>
 
         <form noValidate onSubmit={handleSubmit} style={{ display: "grid", gap: 12 }}>
           <div>
-            <label style={{ display: "block", fontWeight: 600, marginBottom: 6 }}>Имя и фамилия</label>
+            <label style={{ display: "block", fontWeight: 600, marginBottom: 6 }}>Full name</label>
             <input
               name="fullName"
               value={form.fullName}
@@ -120,7 +303,7 @@ export default function Payment() {
 
           <div style={{ display: "grid", gap: 12 }}>
             <div>
-              <label style={{ display: "block", fontWeight: 600, marginBottom: 6 }}>Номер карты</label>
+              <label style={{ display: "block", fontWeight: 600, marginBottom: 6 }}>Card number</label>
               <input
                 name="cardNumber"
                 value={form.cardNumber}
@@ -142,7 +325,7 @@ export default function Payment() {
                   value={form.expiry}
                   onChange={handleChange}
                   placeholder="12/29"
-                  title="Введите в формате MM/YY (например, 12/29)"
+                  title="Enter in MM/YY format (e.g., 12/29)"
                   inputMode="numeric"
                   maxLength={5}
                   style={{ width: "100%", padding: 10, borderRadius: 6, border: "1px solid var(--border-color)" }}
@@ -171,7 +354,7 @@ export default function Payment() {
           </div>
 
           <div>
-            <label style={{ display: "block", fontWeight: 600, marginBottom: 6 }}>Сумма</label>
+            <label style={{ display: "block", fontWeight: 600, marginBottom: 6 }}>Amount</label>
             <input
               name="amount"
               value={form.amount}
@@ -183,6 +366,16 @@ export default function Payment() {
             {errors.amount && (
               <div style={{ color: "#b91c1c", fontSize: 12, marginTop: 6 }}>{errors.amount}</div>
             )}
+          </div>
+
+          <div>
+            <label style={{ display: "block", fontWeight: 600, marginBottom: 6 }}>Order ID (optional)</label>
+            <input
+              value={orderId}
+              onChange={(e) => setOrderId(e.target.value)}
+              placeholder="auto-generated if empty"
+              style={{ width: "100%", padding: 10, borderRadius: 6, border: "1px solid var(--border-color)" }}
+            />
           </div>
 
           {result && (
@@ -200,10 +393,24 @@ export default function Payment() {
 
           <div style={{ display: "flex", gap: 12 }}>
             <button type="submit" disabled={submitting} style={{ flex: 1 }}>
-              {submitting ? "Обработка..." : "Оплатить"}
+              {submitting ? "Processing..." : "Pay"}
+            </button>
+            <button type="button" onClick={onCryptoPay} disabled={cryptoBusy} style={{ flex: 1, background: "#0a0", color: "#fff" }}>
+              {cryptoBusy ? "Sending..." : "Pay with USDC"}
+            </button>
+            <button type="button" onClick={onEscrowPay} disabled={cryptoBusy || !NETWORKS.polygonAmoy.escrow.address || NETWORKS.polygonAmoy.escrow.address === "0x0000000000000000000000000000000000000000"} style={{ flex: 1, background: "#2563eb", color: "#fff" }}>
+              {cryptoBusy ? "Creating..." : "Pay to ESCROW"}
+            </button>
+          </div>
+          <div style={{ display: "flex", gap: 12 }}>
+            <button type="button" onClick={onRelease} disabled={cryptoBusy} style={{ flex: 1, background: "#6b21a8", color: "#fff" }}>
+              Release funds
+            </button>
+            <button type="button" onClick={onRefund} disabled={cryptoBusy} style={{ flex: 1, background: "#b91c1c", color: "#fff" }}>
+              Refund
             </button>
             <a href="/" style={{ flex: 1 }}>
-              <button type="button" style={{ width: "100%", background: "var(--bg-tertiary)", color: "var(--text-primary)" }}>Назад</button>
+              <button type="button" style={{ width: "100%", background: "var(--bg-tertiary)", color: "var(--text-primary)" }}>Back</button>
             </a>
           </div>
         </form>
