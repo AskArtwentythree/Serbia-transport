@@ -13,6 +13,7 @@ import "leaflet/dist/leaflet.css";
 import "./styles.css";
 import { MOCK_VEHICLES, generateVehiclesNearRoute } from "./mockData";
 import Profile from "./Profile";
+import { Link } from "react-router-dom";
 import VehicleModal from "./VehicleModal";
 import AddressSearch from "./AddressSearch";
 
@@ -412,24 +413,46 @@ export default function App() {
           }}
         >
           <h2 style={{ margin: 0 }}>Mobility MVP — Serbia</h2>
-          <button
-            onClick={() => setIsProfileOpen(true)}
-            className="profile-button"
-            style={{
-              background: "var(--bg-tertiary)",
-              border: "1px solid var(--border-color)",
-              borderRadius: "6px",
-              padding: "8px 12px",
-              cursor: "pointer",
-              display: "flex",
-              alignItems: "center",
-              gap: "6px",
-              fontSize: "12px",
-              color: "var(--text-primary)",
-            }}
-          >
-            👤 {user.name.split(" ")[0]}
-          </button>
+          <div style={{ display: "flex", gap: 8 }}>
+            <Link to="/payment">
+              <button
+                className="profile-button"
+                style={{
+                  background: "linear-gradient(135deg, var(--success-color), #059669)",
+                  border: "1px solid var(--border-color)",
+                  borderRadius: "6px",
+                  padding: "8px 12px",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "6px",
+                  fontSize: "12px",
+                  color: "white",
+                }}
+              >
+                💳 Оплата
+              </button>
+            </Link>
+
+            <button
+              onClick={() => setIsProfileOpen(true)}
+              className="profile-button"
+              style={{
+                background: "var(--bg-tertiary)",
+                border: "1px solid var(--border-color)",
+                borderRadius: "6px",
+                padding: "8px 12px",
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                gap: "6px",
+                fontSize: "12px",
+                color: "var(--text-primary)",
+              }}
+            >
+              👤 {user.name.split(" ")[0]}
+            </button>
+          </div>
         </div>
         <p>
           {!start && !end && "📱 Select point A on the map or enter an address"}
