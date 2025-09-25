@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { connectWallet, NETWORKS, erc20Transfer, formatAmountToUnits, getProvider } from "./crypto";
+import { connectWallet, NETWORKS, erc20Transfer, erc20Approve, createEscrowPayment, generateOrderId, formatAmountToUnits, getProvider } from "./crypto";
 import { Contract } from "ethers";
 
 export default function Payment() {
@@ -78,15 +78,37 @@ export default function Payment() {
     }
     try {
       setCryptoBusy(true);
-      setCryptoMsg("Подготовка транзакции...");
+      setCryptoMsg("Подготовка эскроу транзакции...");
       const decimals = preferred.usdc.decimals;
       const amount = formatAmountToUnits(amountStr, decimals);
-      const merchant = "0x000000000000000000000000000000000000dEaD"; // demo address
+      const partner = "0x000000000000000000000000000000000000dEaD"; // demo partner address
       const { signer } = await connectWallet();
       await ensurePreferredNetwork();
-      const receipt = await erc20Transfer({ signer, token: preferred.usdc.address, to: merchant, amount, decimals });
-      setCryptoMsg(`Оплачено в блокчейне. Хэш: ${receipt.hash.slice(0, 10)}...`);
-      setResult({ ok: true, message: "Крипто-оплата прошла успешно" });
+      
+      // 1. Approve USDC spending for escrow contract
+      setCryptoMsg("Одобрение USDC для эскроу...");
+      await erc20Approve({ 
+        signer, 
+        token: preferred.usdc.address, 
+        spender: preferred.escrow.address, 
+        amount, 
+        decimals 
+      });
+      
+      // 2. Create escrow payment (this will trigger the 40/40/20 split)
+      setCryptoMsg("Создание эскроу платежа...");
+      const orderId = generateOrderId();
+      setOrderId(orderId);
+      const receipt = await createEscrowPayment({ 
+        signer, 
+        escrowAddress: preferred.escrow.address, 
+        orderId, 
+        partner, 
+        amount 
+      });
+      
+      setCryptoMsg(`Эскроу создан. Хэш: ${receipt.hash.slice(0, 10)}...`);
+      setResult({ ok: true, message: "Крипто-payment через эскроу прошла успешно" });
     } catch (e) {
       setCryptoMsg(e.shortMessage || e.message || "Ошибка крипто-оплаты");
       setResult({ ok: false, message: "Ошибка крипто-оплаты" });
@@ -126,10 +148,32 @@ export default function Payment() {
       setCryptoMsg("Создание эскроу-платежа...");
       await (await escrow.createPayment(idBytes, partner, amount)).wait();
       setCryptoMsg("Эскроу создан. Ожидает выпуска средств.");
-      setResult({ ok: true, message: "Эскроу-платёж создан" });
+      setResult({ ok: true, message: "Эскроу-платёж создан. Нажмите 'Release Funds' для распределения." });
     } catch (e) {
       setCryptoMsg(e.shortMessage || e.message || "Ошибка создания эскроу");
       setResult({ ok: false, message: "Ошибка создания эскроу" });
+    } finally {
+      setCryptoBusy(false);
+    }
+  };
+
+  const onReleaseFunds = async () => {
+    if (!orderId) {
+      setCryptoMsg("Сначала создайте эскроу-платёж");
+      return;
+    }
+    try {
+      setCryptoBusy(true);
+      setCryptoMsg("Выпуск средств из эскроу...");
+      const { signer } = await connectWallet();
+      const escrow = new Contract(NETWORKS.polygonAmoy.escrow.address, ESCROW_ABI, signer);
+      const idBytes = `0x${Buffer.from(orderId).toString("hex").slice(0,64).padEnd(64,'0')}`;
+      await (await escrow.release(idBytes)).wait();
+      setCryptoMsg("Средства успешно распределены: 40% партнёру, 40% платформе, 20% городу");
+      setResult({ ok: true, message: "Средства выпущены и распределены!" });
+    } catch (e) {
+      setCryptoMsg(e.shortMessage || e.message || "Ошибка выпуска средств");
+      setResult({ ok: false, message: "Ошибка выпуска средств" });
     } finally {
       setCryptoBusy(false);
     }
@@ -235,7 +279,7 @@ export default function Payment() {
     }
     try {
       await new Promise((resolve) => setTimeout(resolve, 1000));
-      setResult({ ok: true, message: "Оплата прошла успешно" });
+      setResult({ ok: true, message: "Payment прошла успешно" });
       setForm({ fullName: "", email: "", cardNumber: "", expiry: "", cvc: "", amount: "" });
     } catch (err) {
       setResult({ ok: false, message: "Ошибка оплаты. Попробуйте снова." });
@@ -400,6 +444,9 @@ export default function Payment() {
             </button>
             <button type="button" onClick={onEscrowPay} disabled={cryptoBusy || !NETWORKS.polygonAmoy.escrow.address || NETWORKS.polygonAmoy.escrow.address === "0x0000000000000000000000000000000000000000"} style={{ flex: 1, background: "#2563eb", color: "#fff" }}>
               {cryptoBusy ? "Creating..." : "Pay to ESCROW"}
+            </button>
+            <button type="button" onClick={onReleaseFunds} disabled={cryptoBusy || !orderId} style={{ flex: 1, background: "#dc2626", color: "#fff" }}>
+              {cryptoBusy ? "Releasing..." : "Release Funds"}
             </button>
           </div>
           <div style={{ display: "flex", gap: 12 }}>

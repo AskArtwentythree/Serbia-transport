@@ -430,7 +430,7 @@ export default function App() {
                   color: "white",
                 }}
               >
-                💳 Оплата
+                💳 Payment
               </button>
             </Link>
 
