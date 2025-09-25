@@ -54,7 +54,7 @@ function Profile({ isOpen, onClose, user, onUpdateUser }) {
           }}
         >
           <h2 style={{ margin: 0, color: "var(--text-primary)" }}>
-            👤 My Profile
+            My Profile
           </h2>
           <button
             onClick={onClose}
@@ -161,7 +161,7 @@ function Profile({ isOpen, onClose, user, onUpdateUser }) {
                 cursor: "pointer",
               }}
             >
-              ✏️ Edit Profile
+              Edit Profile
             </button>
           </div>
         ) : (
@@ -355,7 +355,7 @@ function Profile({ isOpen, onClose, user, onUpdateUser }) {
                   cursor: "pointer",
                 }}
               >
-                💾 Save
+                Save
               </button>
               <button
                 onClick={handleCancel}
@@ -371,7 +371,7 @@ function Profile({ isOpen, onClose, user, onUpdateUser }) {
                   cursor: "pointer",
                 }}
               >
-                ❌ Cancel
+                Cancel
               </button>
             </div>
           </div>

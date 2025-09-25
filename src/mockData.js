@@ -1,6 +1,8 @@
 // Import local icons
 import carIcon from "./assets/car.png";
 import scooterIcon from "./assets/scooter.png";
+import car2 from "./assets/car2.png";
+import cycleIcon from "./assets/cycle.png";
 
 // Реалистичные данные по Белграду (Serbia) с различными сервисами микромобильности
 export const MOCK_VEHICLES = [
@@ -83,7 +85,7 @@ export const MOCK_VEHICLES = [
     title: "Nextbike Station (8 bikes)",
     battery: null,
     price: "1€/hour",
-    image: scooterIcon,
+    image: cycleIcon,
     available: true,
     distance: 0.3,
   },
@@ -96,50 +98,50 @@ export const MOCK_VEHICLES = [
     title: "Nextbike Station (5 bikes)",
     battery: null,
     price: "1€/hour",
-    image: scooterIcon,
+    image: cycleIcon,
     available: true,
     distance: 0.4,
   },
 
-  // Car Sharing - CarGo
+  // Bicycle Sharing - LocalBike
   {
-    id: "cargo-1",
-    type: "car",
-    operator: "CarGo",
-    lat: 44.8145,
-    lon: 20.451,
-    title: "CarGo - VW Polo",
+    id: "localbike-1",
+    type: "bike",
+    operator: "LocalBike",
+    lat: 44.8142,
+    lon: 20.453,
+    title: "LocalBike - City Bike",
     battery: null,
-    price: "0.25€/min + 0.8€/km",
-    image: carIcon,
+    price: "0.5€/hour",
+    image: cycleIcon,
     available: true,
-    distance: 0.2,
+    distance: 0.25,
   },
   {
-    id: "cargo-2",
-    type: "car",
-    operator: "CarGo",
-    lat: 44.8198,
-    lon: 20.459,
-    title: "CarGo - Renault Clio",
-    battery: null,
-    price: "0.25€/min + 0.8€/km",
-    image: carIcon,
+    id: "localbike-2",
+    type: "bike",
+    operator: "LocalBike",
+    lat: 44.8185,
+    lon: 20.461,
+    title: "LocalBike - Electric Bike",
+    battery: 75,
+    price: "0.8€/hour",
+    image: cycleIcon,
     available: true,
-    distance: 0.1,
+    distance: 0.15,
   },
 
-  // Car Sharing - LocalCarShare
+  // Car Sharing - Only Toyota Fortuner GR
   {
-    id: "localcar-1",
+    id: "carshare-toyota-fortuner-gr-1",
     type: "car",
-    operator: "LocalCarShare",
+    operator: "Toyota Share",
     lat: 44.8165,
     lon: 20.454,
-    title: "LocalCar - Ford Focus",
+    title: "Toyota Fortuner GR",
     battery: null,
-    price: "0.20€/min + 0.7€/km",
-    image: carIcon,
+    price: "0.35€/min + 1.0€/km",
+    image: car2,
     available: true,
     distance: 0.15,
   },
@@ -174,33 +176,28 @@ export const MOCK_VEHICLES = [
 ];
 
 // Функция для генерации транспорта рядом с маршрутом
-export const generateVehiclesNearRoute = (start, end) => {
-  if (!start || !end) return [];
+export const generateVehiclesNearRoute = (start /*, end */) => {
+  // Генерируем транспорт рядом с точкой старта, чтобы было похоже на реальный UX
+  if (!start) return [];
 
-  // Генерируем случайные точки вдоль маршрута
-  const routeCenter = {
-    lat: (start.lat + end.lat) / 2,
-    lng: (start.lng + end.lng) / 2,
-  };
-
-  // Создаем несколько точек вдоль маршрута
-  const numPoints = 3;
+  const center = { lat: start.lat, lng: start.lng };
+  const numPoints = 6; // немного больше объектов рядом со стартом
   const vehicles = [];
 
   for (let i = 0; i < numPoints; i++) {
-    // Случайное смещение от центра маршрута
-    const latOffset = (Math.random() - 0.5) * 0.01; // ~500м
-    const lngOffset = (Math.random() - 0.5) * 0.01;
+    // Случайное смещение от точки старта в небольшом радиусе (~300–600м)
+    const latOffset = (Math.random() - 0.5) * 0.006; // ~600 м по широте
+    const lngOffset = (Math.random() - 0.5) * 0.006; // ~600 м по долготе
 
-    const vehicleLat = routeCenter.lat + latOffset;
-    const vehicleLng = routeCenter.lng + lngOffset;
+    const vehicleLat = center.lat + latOffset;
+    const vehicleLng = center.lng + lngOffset;
 
-    // Вычисляем расстояние от центра маршрута
+    // Вычисляем расстояние от точки старта
     const distance =
       Math.sqrt(
-        Math.pow(vehicleLat - routeCenter.lat, 2) +
-          Math.pow(vehicleLng - routeCenter.lng, 2)
-      ) * 111; // Примерно в км
+        Math.pow(vehicleLat - center.lat, 2) +
+          Math.pow(vehicleLng - center.lng, 2)
+      ) * 111; // км
 
     // Создаем разные типы транспорта
     const vehicleTypes = [
@@ -226,22 +223,30 @@ export const generateVehiclesNearRoute = (start, end) => {
         title: `Nextbike #N${Math.floor(Math.random() * 100)}`,
         battery: null,
         price: "0.10€/min",
-        image: scooterIcon,
+        image: cycleIcon,
+      },
+      {
+        type: "bike",
+        operator: "LocalBike",
+        title: `LocalBike - City Bike`,
+        battery: null,
+        price: "0.5€/hour",
+        image: cycleIcon,
+      },
+      {
+        type: "bike",
+        operator: "LocalBike",
+        title: `LocalBike - Electric Bike`,
+        battery: Math.floor(Math.random() * 40) + 60, // 60-100%
+        price: "0.8€/hour",
+        image: cycleIcon,
       },
       {
         type: "car",
-        operator: "CarGo",
-        title: `CarGo - VW Polo`,
+        operator: "Toyota Share",
+        title: `Toyota Fortuner GR`,
         battery: null,
-        price: "0.25€/min + 0.8€/km",
-        image: carIcon,
-      },
-      {
-        type: "car",
-        operator: "LocalCarShare",
-        title: `LocalCar - Renault Clio`,
-        battery: null,
-        price: "0.20€/min + 0.6€/km",
+        price: "0.35€/min + 1.0€/km",
         image: carIcon,
       },
     ];
