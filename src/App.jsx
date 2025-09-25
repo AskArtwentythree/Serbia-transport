@@ -892,47 +892,6 @@ export default function App() {
         </div>
 
         <hr />
-        <div
-          style={{
-            fontSize: 13,
-            color: "var(--text-secondary)",
-            padding: "16px",
-            background:
-              "linear-gradient(135deg, var(--bg-tertiary) 0%, rgba(99, 102, 241, 0.05) 100%)",
-            borderRadius: "12px",
-            border: "1px solid var(--border-color)",
-            marginTop: "16px",
-          }}
-        >
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "8px",
-              marginBottom: "8px",
-              color: "var(--text-primary)",
-              fontWeight: "600",
-            }}
-          >
-            <span>💡</span>
-            <span>Note</span>
-          </div>
-          <div style={{ lineHeight: "1.5" }}>
-            <strong>Demo Features:</strong>
-            <br />
-            • Filter transport by proximity to route
-            <br />
-            • Integration with Bolt, Lime, Nextbike, CarGo, GSP Beograd
-            <br />
-            • Show prices, battery, distances
-            <br />
-            • Booking simulation
-            <br />
-            <br />
-            <strong>For Production:</strong> replace MOCK_VEHICLES with real
-            APIs (GBFS, operators).
-          </div>
-        </div>
       </div>
 
       <Profile
