@@ -1,6 +1,6 @@
 import React from "react";
 
-function VehicleModal({ isOpen, onClose, vehicle }) {
+function VehicleModal({ isOpen, onClose, vehicle, onNavigate }) {
   if (!isOpen || !vehicle) return null;
 
   const getVehicleIcon = (type) => {
@@ -245,10 +245,12 @@ function VehicleModal({ isOpen, onClose, vehicle }) {
         <div style={{ display: "flex", gap: "12px" }}>
           <button
             onClick={() => {
-              // In a real app here will be navigation to the vehicle
-              alert(
-                `🧭 Navigate to ${vehicle.title}\n\nIn a real app this would open navigation to the vehicle.`
-              );
+              if (onNavigate) {
+                onNavigate(vehicle);
+                onClose(); // Close modal after starting navigation
+              } else {
+                alert("Navigation function not available");
+              }
             }}
             style={{
               flex: 1,
@@ -262,12 +264,12 @@ function VehicleModal({ isOpen, onClose, vehicle }) {
               cursor: "pointer",
             }}
           >
-            🧭 Navigate
+            Navigate
           </button>
           <button
             onClick={() => {
               alert(
-                `🚀 Booking: ${vehicle.title}\n\nOperator: ${vehicle.operator}\nPrice: ${vehicle.price}\n\n(In a real app this would be a deep link to ${vehicle.operator})`
+                `🚀 Booking: ${vehicle.title}\n\nOperator: ${vehicle.operator}\nPrice: ${vehicle.price}\n\n ${vehicle.operator}`
               );
             }}
             style={{
