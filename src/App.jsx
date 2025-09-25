@@ -281,12 +281,19 @@ export default function App() {
   const [selectedVehicle, _setSelectedVehicle] = useState(null);
   const [startAddress, setStartAddress] = useState("");
   const [endAddress, setEndAddress] = useState("");
-  const [user, setUser] = useState({
-    name: "Alexander Petrov",
-    email: "alex.petrov@email.com",
-    phone: "+381 60 123 4567",
-    city: "Belgrade",
-    preferences: ["Scooters", "Bicycles", "Car Sharing"],
+  const [user, setUser] = useState(() => {
+    // Load user profile from localStorage or use default
+    const savedProfile = localStorage.getItem("userProfile");
+    if (savedProfile) {
+      return JSON.parse(savedProfile);
+    }
+    return {
+      fullName: "Alexander Petrov",
+      email: "alex.petrov@email.com",
+      phone: "+381 60 123 4567",
+      city: "Belgrade",
+      preferences: ["Scooters", "Bicycles", "Car Sharing"],
+    };
   });
   const mapRef = useRef();
 
@@ -375,6 +382,11 @@ export default function App() {
     setEndAddress(address.name);
   };
 
+  const handleUpdateUser = (updatedUser) => {
+    setUser(updatedUser);
+    localStorage.setItem("userProfile", JSON.stringify(updatedUser));
+  };
+
   const clearStartAddress = () => {
     setStart(null);
     setStartAddress("");
@@ -452,7 +464,10 @@ export default function App() {
                 color: "var(--text-primary)",
               }}
             >
-              👤 {user.name.split(" ")[0]}
+              👤{" "}
+              {user.fullName
+                ? user.fullName.split(" ")[0]
+                : user.name?.split(" ")[0] || "User"}
             </button>
           </div>
         </div>
@@ -898,7 +913,7 @@ export default function App() {
         isOpen={isProfileOpen}
         onClose={() => setIsProfileOpen(false)}
         user={user}
-        onUpdateUser={setUser}
+        onUpdateUser={handleUpdateUser}
       />
 
       <VehicleModal
