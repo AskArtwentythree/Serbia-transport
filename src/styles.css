@@ -402,3 +402,8 @@ hr {
     font-size: 12px;
   }
 }
+
+/* Hide scrollbar for modal */
+.profile-modal::-webkit-scrollbar {
+  display: none;
+}

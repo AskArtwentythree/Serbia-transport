@@ -29,6 +29,7 @@ L.Icon.Default.mergeOptions({
 // Import local icons
 import carIcon from "./assets/car.png";
 import scooterIcon from "./assets/scooter.png";
+import cycleIcon from "./assets/cycle.png";
 
 // small icons by type - using local assets with beautiful styling
 const iconFor = (type) => {
@@ -60,7 +61,7 @@ const iconFor = (type) => {
           type === "scooter"
             ? scooterIcon
             : type === "bike"
-            ? scooterIcon
+            ? cycleIcon
             : type === "car"
             ? carIcon
             : scooterIcon
@@ -99,7 +100,7 @@ function MapClickHandler({ setStart, setEnd, start, end, clearRoute }) {
       } else if (!end) {
         setEnd(latlng);
       } else {
-        // если уже есть обе точки — сбросим и поставим новую start
+        // both points exist — reset and set new start
         setStart(latlng);
         setEnd(null);
         clearRoute();
@@ -147,7 +148,7 @@ function MapComponent({
         <Marker position={[start.lat, start.lng]}>
           <Popup>
             <div>
-              <strong>Точка A</strong>
+              <strong>Point A</strong>
               <div>
                 {start.lat.toFixed(6)}, {start.lng.toFixed(6)}
               </div>
@@ -159,7 +160,7 @@ function MapComponent({
         <Marker position={[end.lat, end.lng]}>
           <Popup>
             <div>
-              <strong>Точка B</strong>
+              <strong>Point B</strong>
               <div>
                 {end.lat.toFixed(6)}, {end.lng.toFixed(6)}
               </div>
@@ -232,16 +233,16 @@ function MapComponent({
                   marginBottom: "8px",
                 }}
               >
-                <div>🚗 {v.operator}</div>
-                <div>💰 {v.price}</div>
+                <div> {v.operator}</div>
+                <div> {v.price}</div>
                 {v.battery && <div>🔋 {v.battery}%</div>}
-                <div>📍 {v.distance.toFixed(1)}km away</div>
+                <div> {v.distance.toFixed(1)}km away</div>
               </div>
 
               <button
                 onClick={() =>
                   alert(
-                    `🚀 Бронирование: ${v.title}\n\nОператор: ${v.operator}\nЦена: ${v.price}\n\n(В реальном приложении тут будет deep link к приложению ${v.operator})`
+                    `🚀 Booking: ${v.title}\n\nOperator: ${v.operator}\nPrice: ${v.price}\n\n(In a real app this would deep link to ${v.operator})`
                   )
                 }
                 style={{
@@ -258,7 +259,7 @@ function MapComponent({
                   transition: "all 0.3s ease",
                 }}
               >
-                🚀 Забронировать
+                🚀 Book
               </button>
             </div>
           </Popup>
@@ -280,12 +281,19 @@ export default function App() {
   const [selectedVehicle, _setSelectedVehicle] = useState(null);
   const [startAddress, setStartAddress] = useState("");
   const [endAddress, setEndAddress] = useState("");
-  const [user, setUser] = useState({
-    name: "Alexander Petrov",
-    email: "alex.petrov@email.com",
-    phone: "+381 60 123 4567",
-    city: "Belgrade",
-    preferences: ["Scooters", "Bicycles", "Car Sharing"],
+  const [user, setUser] = useState(() => {
+    // Load user profile from localStorage or use default
+    const savedProfile = localStorage.getItem("userProfile");
+    if (savedProfile) {
+      return JSON.parse(savedProfile);
+    }
+    return {
+      fullName: "Alexander Petrov",
+      email: "alex.petrov@email.com",
+      phone: "+381 60 123 4567",
+      city: "Belgrade",
+      preferences: ["Scooters", "Bicycles", "Car Sharing"],
+    };
   });
   const mapRef = useRef();
 
@@ -374,6 +382,11 @@ export default function App() {
     setEndAddress(address.name);
   };
 
+  const handleUpdateUser = (updatedUser) => {
+    setUser(updatedUser);
+    localStorage.setItem("userProfile", JSON.stringify(updatedUser));
+  };
+
   const clearStartAddress = () => {
     setStart(null);
     setStartAddress("");
@@ -412,13 +425,14 @@ export default function App() {
             marginBottom: "16px",
           }}
         >
-          <h2 style={{ margin: 0 }}>Mobility MVP — Serbia</h2>
+          <h2 style={{ margin: 0 }}>Hop & Go</h2>
           <div style={{ display: "flex", gap: 8 }}>
             <Link to="/payment">
               <button
                 className="profile-button"
                 style={{
-                  background: "linear-gradient(135deg, var(--success-color), #059669)",
+                  background:
+                    "linear-gradient(135deg, var(--success-color), #059669)",
                   border: "1px solid var(--border-color)",
                   borderRadius: "6px",
                   padding: "8px 12px",
@@ -450,15 +464,16 @@ export default function App() {
                 color: "var(--text-primary)",
               }}
             >
-              👤 {user.name.split(" ")[0]}
+              👤{" "}
+              {user.fullName
+                ? user.fullName.split(" ")[0]
+                : user.name?.split(" ")[0] || "User"}
             </button>
           </div>
         </div>
         <p>
-          {!start && !end && "📱 Select point A on the map or enter an address"}
-          {start &&
-            !end &&
-            "📱 Now select point B on the map or enter an address"}
+          {!start && !end && "Select point A on the map or enter an address"}
+          {start && !end && "Now select point B on the map or enter an address"}
           {start && end && isScanning && "🔍 Scanning area near the route..."}
           {start && end && !isScanning && "✅ Route built! Transport found!"}
         </p>
@@ -475,7 +490,7 @@ export default function App() {
                 fontSize: "14px",
               }}
             >
-              📍 Point A (Start)
+              Point A (Start)
             </label>
             <AddressSearch
               onAddressSelect={handleStartAddressSelect}
@@ -495,7 +510,7 @@ export default function App() {
                 fontSize: "14px",
               }}
             >
-              🎯 Point B (End)
+              Point B (End)
             </label>
             <AddressSearch
               onAddressSelect={handleEndAddressSelect}
@@ -598,10 +613,10 @@ export default function App() {
         >
           <h3 style={{ margin: 0 }}>
             {!start || !end
-              ? "🚗 Select Route"
+              ? "Select Route"
               : isScanning
               ? "🔍 Scanning..."
-              : "🚗 Near Route"}
+              : "Near Route"}
           </h3>
           <div
             style={{
@@ -629,7 +644,7 @@ export default function App() {
           </div>
         </div>
 
-        {/* Статистика по типам транспорта */}
+        {/* Transport type statistics */}
         {start && end && !isScanning && (
           <div
             style={{
@@ -729,7 +744,16 @@ export default function App() {
             nearbyVehicles.map((v) => (
               <div key={v.id} className="vehicle-item">
                 <div style={{ position: "relative" }}>
-                  <img src={v.image} alt="" width="56" />
+                  <img
+                    src={v.image}
+                    alt=""
+                    style={{
+                      objectFit: "contain",
+                      width: v.type === "scooter" ? 160 : 160,
+                      height: v.type === "scooter" ? "auto" : "auto",
+                      display: "block",
+                    }}
+                  />
                   <div
                     style={{
                       position: "absolute",
@@ -823,9 +847,9 @@ export default function App() {
                       flexWrap: "wrap",
                     }}
                   >
-                    <span>💰 {v.price}</span>
+                    <span> {v.price}</span>
                     {v.battery && <span>🔋 {v.battery}%</span>}
-                    <span>📍 {v.distance.toFixed(1)}km</span>
+                    <span>{v.distance.toFixed(1)}km</span>
                   </div>
 
                   <div style={{ display: "flex", gap: "8px" }}>
@@ -851,7 +875,7 @@ export default function App() {
                         flex: 1,
                       }}
                     >
-                      📍 Show
+                      Show
                     </button>
                     <button
                       onClick={() =>
@@ -883,54 +907,13 @@ export default function App() {
         </div>
 
         <hr />
-        <div
-          style={{
-            fontSize: 13,
-            color: "var(--text-secondary)",
-            padding: "16px",
-            background:
-              "linear-gradient(135deg, var(--bg-tertiary) 0%, rgba(99, 102, 241, 0.05) 100%)",
-            borderRadius: "12px",
-            border: "1px solid var(--border-color)",
-            marginTop: "16px",
-          }}
-        >
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "8px",
-              marginBottom: "8px",
-              color: "var(--text-primary)",
-              fontWeight: "600",
-            }}
-          >
-            <span>💡</span>
-            <span>Note</span>
-          </div>
-          <div style={{ lineHeight: "1.5" }}>
-            <strong>Demo Features:</strong>
-            <br />
-            • Filter transport by proximity to route
-            <br />
-            • Integration with Bolt, Lime, Nextbike, CarGo, GSP Beograd
-            <br />
-            • Show prices, battery, distances
-            <br />
-            • Booking simulation
-            <br />
-            <br />
-            <strong>For Production:</strong> replace MOCK_VEHICLES with real
-            APIs (GBFS, operators).
-          </div>
-        </div>
       </div>
 
       <Profile
         isOpen={isProfileOpen}
         onClose={() => setIsProfileOpen(false)}
         user={user}
-        onUpdateUser={setUser}
+        onUpdateUser={handleUpdateUser}
       />
 
       <VehicleModal

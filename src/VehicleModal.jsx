@@ -82,7 +82,7 @@ function VehicleModal({ isOpen, onClose, vehicle }) {
                 width: "48px",
                 height: "48px",
                 borderRadius: "50%",
-                background: "var(--primary-color)",
+                // background: "var(--primary-color)",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
@@ -138,9 +138,9 @@ function VehicleModal({ isOpen, onClose, vehicle }) {
             src={vehicle.image}
             alt={vehicle.type}
             style={{
-              width: "120px",
-              height: "120px",
               objectFit: "contain",
+              width: vehicle.type === "scooter" ? 200 : "inherent",
+              height: vehicle.type === "scooter" ? "auto" : "auto",
             }}
           />
         </div>
@@ -180,7 +180,7 @@ function VehicleModal({ isOpen, onClose, vehicle }) {
         {/* Details */}
         <div style={{ marginBottom: "20px" }}>
           <h3 style={{ margin: "0 0 12px 0", color: "var(--text-primary)" }}>
-            Детали
+            Details
           </h3>
           <div
             style={{
@@ -197,9 +197,8 @@ function VehicleModal({ isOpen, onClose, vehicle }) {
                 textAlign: "center",
               }}
             >
-              <div style={{ fontSize: "20px", marginBottom: "4px" }}>💰</div>
               <div style={{ fontSize: "12px", color: "var(--text-secondary)" }}>
-                Цена
+                Price
               </div>
               <div style={{ fontWeight: "600", color: "var(--text-primary)" }}>
                 {vehicle.price}
@@ -213,12 +212,11 @@ function VehicleModal({ isOpen, onClose, vehicle }) {
                 textAlign: "center",
               }}
             >
-              <div style={{ fontSize: "20px", marginBottom: "4px" }}>📍</div>
               <div style={{ fontSize: "12px", color: "var(--text-secondary)" }}>
-                Расстояние
+                Distance
               </div>
               <div style={{ fontWeight: "600", color: "var(--text-primary)" }}>
-                {vehicle.distance.toFixed(1)} км
+                {vehicle.distance.toFixed(1)} km
               </div>
             </div>
           </div>
@@ -227,7 +225,7 @@ function VehicleModal({ isOpen, onClose, vehicle }) {
         {/* Location */}
         <div style={{ marginBottom: "20px" }}>
           <h3 style={{ margin: "0 0 12px 0", color: "var(--text-primary)" }}>
-            Местоположение
+            Location
           </h3>
           <div
             style={{
@@ -238,8 +236,8 @@ function VehicleModal({ isOpen, onClose, vehicle }) {
               color: "var(--text-secondary)",
             }}
           >
-            <div>Широта: {vehicle.lat.toFixed(6)}</div>
-            <div>Долгота: {vehicle.lon.toFixed(6)}</div>
+            <div>Latitude: {vehicle.lat.toFixed(6)}</div>
+            <div>Longitude: {vehicle.lon.toFixed(6)}</div>
           </div>
         </div>
 
@@ -247,9 +245,9 @@ function VehicleModal({ isOpen, onClose, vehicle }) {
         <div style={{ display: "flex", gap: "12px" }}>
           <button
             onClick={() => {
-              // В реальном приложении здесь будет навигация к транспорту
+              // In a real app here will be navigation to the vehicle
               alert(
-                `🧭 Навигация к ${vehicle.title}\n\nВ реальном приложении здесь будет открыта навигация к транспорту.`
+                `🧭 Navigate to ${vehicle.title}\n\nIn a real app this would open navigation to the vehicle.`
               );
             }}
             style={{
@@ -264,12 +262,12 @@ function VehicleModal({ isOpen, onClose, vehicle }) {
               cursor: "pointer",
             }}
           >
-            🧭 Навигация
+            🧭 Navigate
           </button>
           <button
             onClick={() => {
               alert(
-                `🚀 Бронирование: ${vehicle.title}\n\nОператор: ${vehicle.operator}\nЦена: ${vehicle.price}\n\n(В реальном приложении тут будет deep link к приложению ${vehicle.operator})`
+                `🚀 Booking: ${vehicle.title}\n\nOperator: ${vehicle.operator}\nPrice: ${vehicle.price}\n\n(In a real app this would be a deep link to ${vehicle.operator})`
               );
             }}
             style={{
@@ -284,7 +282,7 @@ function VehicleModal({ isOpen, onClose, vehicle }) {
               cursor: "pointer",
             }}
           >
-            🚀 Забронировать
+            🚀 Book
           </button>
         </div>
       </div>

@@ -34,14 +34,19 @@ function Profile({ isOpen, onClose, user, onUpdateUser }) {
       onClick={onClose}
     >
       <div
+        className="profile-modal"
         style={{
           background: "var(--bg-secondary)",
           borderRadius: "12px",
           padding: "24px",
           width: "100%",
           maxWidth: "400px",
+          maxHeight: "90vh",
           border: "1px solid var(--border-color)",
           boxShadow: "var(--shadow-xl)",
+          overflowY: "auto",
+          scrollbarWidth: "none", // Firefox
+          msOverflowStyle: "none", // IE/Edge
         }}
         onClick={(e) => e.stopPropagation()}
       >
@@ -54,7 +59,7 @@ function Profile({ isOpen, onClose, user, onUpdateUser }) {
           }}
         >
           <h2 style={{ margin: 0, color: "var(--text-primary)" }}>
-            👤 My Profile
+            My Profile
           </h2>
           <button
             onClick={onClose}
@@ -87,10 +92,10 @@ function Profile({ isOpen, onClose, user, onUpdateUser }) {
                   margin: "0 auto 16px",
                 }}
               >
-                {user.name.charAt(0).toUpperCase()}
+                {(user.fullName || user.name || "U").charAt(0).toUpperCase()}
               </div>
               <h3 style={{ textAlign: "center", margin: "0 0 8px 0" }}>
-                {user.name}
+                {user.fullName || user.name || "User"}
               </h3>
               <p
                 style={{
@@ -161,7 +166,7 @@ function Profile({ isOpen, onClose, user, onUpdateUser }) {
                 cursor: "pointer",
               }}
             >
-              ✏️ Edit Profile
+              Edit Profile
             </button>
           </div>
         ) : (
@@ -179,9 +184,9 @@ function Profile({ isOpen, onClose, user, onUpdateUser }) {
               </label>
               <input
                 type="text"
-                value={editedUser.name}
+                value={editedUser.fullName || editedUser.name || ""}
                 onChange={(e) =>
-                  setEditedUser({ ...editedUser, name: e.target.value })
+                  setEditedUser({ ...editedUser, fullName: e.target.value })
                 }
                 style={{
                   width: "100%",
@@ -355,7 +360,7 @@ function Profile({ isOpen, onClose, user, onUpdateUser }) {
                   cursor: "pointer",
                 }}
               >
-                💾 Save
+                Save
               </button>
               <button
                 onClick={handleCancel}
@@ -371,7 +376,7 @@ function Profile({ isOpen, onClose, user, onUpdateUser }) {
                   cursor: "pointer",
                 }}
               >
-                ❌ Cancel
+                Cancel
               </button>
             </div>
           </div>
