@@ -82,15 +82,15 @@ export default function Payment() {
     }
     try {
       setCryptoBusy(true);
-      setCryptoMsg("Подготовка транзакции...");
+      setCryptoMsg("Preparing transaction...");
       const decimals = preferred.usdc.decimals;
       const amount = formatAmountToUnits(amountStr, decimals);
-      const partner = "0x000000000000000000000000000000000000dEaD"; // demo partner address
+      const merchant = "0x000000000000000000000000000000000000dEaD"; // demo merchant address
       const { signer } = await connectWallet();
       await ensurePreferredNetwork();
       const receipt = await erc20Transfer({ signer, token: preferred.usdc.address, to: merchant, amount, decimals });
-      setCryptoMsg(`Оплачено в блокчейне. Хэш: ${receipt.hash.slice(0, 10)}...`);
-      setResult({ ok: true, message: "Крипто-оплата прошла успешно" });
+      setCryptoMsg(`Paid in blockchain. Hash: ${receipt.hash.slice(0, 10)}...`);
+      setResult({ ok: true, message: "Crypto payment successful" });
     } catch (e) {
       setCryptoMsg(e.shortMessage || e.message || "Crypto payment error");
       setResult({ ok: false, message: "Crypto payment error" });
