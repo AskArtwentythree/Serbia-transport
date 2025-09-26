@@ -1,5 +1,14 @@
 import React, { useState } from "react";
-import { connectWallet, NETWORKS, erc20Transfer, erc20Approve, createEscrowPayment, generateOrderId, formatAmountToUnits, getProvider } from "./crypto";
+import {
+  connectWallet,
+  NETWORKS,
+  erc20Transfer,
+  erc20Approve,
+  createEscrowPayment,
+  generateOrderId,
+  formatAmountToUnits,
+  getProvider,
+} from "./crypto";
 import { Contract } from "ethers";
 
 export default function Payment() {
@@ -167,10 +176,19 @@ export default function Payment() {
       setCryptoBusy(true);
       setCryptoMsg("Выпуск средств из эскроу...");
       const { signer } = await connectWallet();
-      const escrow = new Contract(NETWORKS.polygonAmoy.escrow.address, ESCROW_ABI, signer);
-      const idBytes = `0x${Buffer.from(orderId).toString("hex").slice(0,64).padEnd(64,'0')}`;
+      const escrow = new Contract(
+        NETWORKS.polygonAmoy.escrow.address,
+        ESCROW_ABI,
+        signer
+      );
+      const idBytes = `0x${Buffer.from(orderId)
+        .toString("hex")
+        .slice(0, 64)
+        .padEnd(64, "0")}`;
       await (await escrow.release(idBytes)).wait();
-      setCryptoMsg("Средства успешно распределены: 40% партнёру, 40% платформе, 20% городу");
+      setCryptoMsg(
+        "Средства успешно распределены: 40% партнёру, 40% платформе, 20% городу"
+      );
       setResult({ ok: true, message: "Средства выпущены и распределены!" });
     } catch (e) {
       setCryptoMsg(e.shortMessage || e.message || "Ошибка выпуска средств");
@@ -293,7 +311,14 @@ export default function Payment() {
     try {
       await new Promise((resolve) => setTimeout(resolve, 1000));
       setResult({ ok: true, message: "Оплата прошла успешно" });
-      setForm({ fullName: "", email: "", cardNumber: "", expiry: "", cvc: "", amount: "" });
+      setForm({
+        fullName: "",
+        email: "",
+        cardNumber: "",
+        expiry: "",
+        cvc: "",
+        amount: "",
+      });
     } catch (err) {
       setResult({ ok: false, message: "Payment error. Please try again." });
     } finally {
@@ -304,10 +329,7 @@ export default function Payment() {
   return (
     <div style={{ display: "flex", width: "100vw", height: "100vh" }}>
       <div style={{ flex: 1, background: "#fff" }} />
-      <div
-        className="sidebar"
-        style={{ width: "var(--sidebar-width)", maxWidth: "40%" }}
-      >
+      <div className="sidebar" style={{ width: "500px", maxWidth: "60%" }}>
         <h2 style={{ margin: 0 }}>Payment</h2>
         <p>Enter your details to pay for the booking.</p>
 
@@ -577,7 +599,12 @@ export default function Payment() {
             >
               {cryptoBusy ? "Creating..." : "Pay to ESCROW"}
             </button>
-            <button type="button" onClick={onReleaseFunds} disabled={cryptoBusy || !orderId} style={{ flex: 1, background: "#dc2626", color: "#fff" }}>
+            <button
+              type="button"
+              onClick={onReleaseFunds}
+              disabled={cryptoBusy || !orderId}
+              style={{ flex: 1, background: "#dc2626", color: "#fff" }}
+            >
               {cryptoBusy ? "Releasing..." : "Release Funds"}
             </button>
           </div>

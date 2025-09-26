@@ -304,8 +304,8 @@ export default function DIDGenerate() {
                 fontWeight: "500",
               }}
             >
-              ⚠️ Important: Save this DID securely. You'll need it to access
-              your account.
+              Important: Save this DID securely. You'll need it to access your
+              account.
             </p>
           </div>
         )}
