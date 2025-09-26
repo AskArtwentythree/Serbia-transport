@@ -62,6 +62,57 @@ export default function Payment() {
     }
   };
 
+  // Enhanced network error recovery with retry logic
+  const executeWithRetry = async (operation, maxRetries = 3, retryDelay = 1000) => {
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        setCryptoMsg(`Operation attempt ${attempt}/${maxRetries}...`);
+        return await operation();
+      } catch (error) {
+        console.log(`Attempt ${attempt} failed:`, error);
+        
+        if (attempt === maxRetries) {
+          throw error; // Throw the last error
+        }
+        
+        // Check if it's a network error that could benefit from retry
+        const isNetworkError = error.code === -32603 || 
+                               error.message?.includes("Internal JSON-RPC") ||
+                               error.payload?.method === "eth_sendTransaction" ||
+                               error.message?.includes("Internal JSON-RPC error");
+        
+        if (isNetworkError) {
+          setCryptoMsg(`Network temporary issue ${attempt}/${maxRetries}, retrying in ${Math.round(retryDelay/1000)}s...`);
+          await new Promise(resolve => setTimeout(resolve, retryDelay));
+          // Increase delay for next iteration but cap it at 5 seconds
+          retryDelay = Math.min(retryDelay * 1.3, 5000);
+        } else {
+          throw error; // Non-network errors shouldn't retry
+        }
+      }
+    }
+  };
+
+  // Check network health to provide better diagnostics
+  const checkNetworkHealth = async () => {
+    try {
+      const provider = await getProvider();
+      const network = await provider.getNetwork();
+      const currentBlock = await provider.getBlockNumber();
+      
+      if (Number(network.chainId) !== Number(preferred.chainId)) {
+        setCryptoMsg(`Wrong network: Expected ${preferred.name} (Chain ID: ${preferred.chainId}) but got Chain ID: ${network.chainId}`);
+        return false;
+      }
+      
+      setCryptoMsg(`Network OK: ${preferred.name}, block ${currentBlock}`);
+      return true;
+    } catch (error) {
+      setCryptoMsg(`Network health check failed: ${error.message}`);
+      return false;
+    }
+  };
+
   const onConnectWallet = async () => {
     try {
       setCryptoBusy(true);
@@ -91,18 +142,34 @@ export default function Payment() {
     }
     try {
       setCryptoBusy(true);
-      setCryptoMsg("Preparing transaction...");
+      await ensurePreferredNetwork();
+      const { signer } = await connectWallet();
       const decimals = preferred.usdc.decimals;
       const amount = formatAmountToUnits(amountStr, decimals);
       const merchant = "0x000000000000000000000000000000000000dEaD"; // demo merchant address
-      const { signer } = await connectWallet();
-      await ensurePreferredNetwork();
-      const receipt = await erc20Transfer({ signer, token: preferred.usdc.address, to: merchant, amount, decimals });
+      
+      // Use retry mechanism for better success rate
+      const receipt = await executeWithRetry(async () => {
+        setCryptoMsg("Preparing USDC transaction...");
+        return await erc20Transfer({ signer, token: preferred.usdc.address, to: merchant, amount, decimals });
+      }, 2, 1500);
+      
       setCryptoMsg(`Paid in blockchain. Hash: ${receipt.hash.slice(0, 10)}...`);
       setResult({ ok: true, message: "Crypto payment successful" });
     } catch (e) {
-      setCryptoMsg(e.shortMessage || e.message || "Crypto payment error");
-      setResult({ ok: false, message: "Crypto payment error" });
+      console.error("USDC payment error:", e);
+      let errorMessage = "Crypto payment error";
+      try {
+        if (e.code === -32603 || e.payload?.method === "eth_sendTransaction") {
+          errorMessage = "Network error: Payment failed to submit. Try switching to a different network provider or retry later.";
+        } else if (e.message) {
+          errorMessage = e.message.replace(/execution reverted:|coalesce:/gi, "").trim();
+        }
+      } catch (parseError) {
+        errorMessage = "Unknown payment error";
+      }
+      setCryptoMsg(errorMessage);
+      setResult({ ok: false, message: errorMessage });
     } finally {
       setCryptoBusy(false);
     }
@@ -113,7 +180,19 @@ export default function Payment() {
     "function createPayment(bytes32 orderId, address partner, uint256 amount)",
     "function release(bytes32 orderId)",
     "function refund(bytes32 orderId)",
+    "function getPayment(bytes32 orderId) view returns (address buyer, address partner, uint256 amount, uint8 status)",
   ];
+
+  // Helper function to consistently encode orderId to bytes32
+  const encodeOrderId = (orderId) => {
+    const encoder = new TextEncoder();
+    const data = encoder.encode(orderId);
+    const hexString = Array.from(data)
+      .map(b => b.toString(16).padStart(2, '0'))
+      .join('');
+    
+    return `0x${hexString.padEnd(64, "0").slice(0, 64)}`;
+  };
 
   const onEscrowPay = async () => {
     setResult(null);
@@ -133,35 +212,115 @@ export default function Payment() {
       const { signer } = await connectWallet();
       const decimals = preferred.usdc.decimals;
       const amount = formatAmountToUnits(amountStr, decimals);
-      // 1) Approve escrow to spend USDC
-      const erc20 = new Contract(
-        preferred.usdc.address,
-        ["function approve(address,uint256) returns (bool)"],
-        signer
-      );
-      setCryptoMsg("Approve USDC spending...");
-      await (
-        await erc20.approve(NETWORKS.polygonAmoy.escrow.address, amount)
-      ).wait();
-      // 2) Create escrow payment
+      
+      // Execute approve with retry mechanism
+      await executeWithRetry(async () => {
+        setCryptoMsg("Approve USDC spending...");
+        await erc20Approve({
+          signer,
+          token: preferred.usdc.address,
+          spender: NETWORKS.polygonAmoy.escrow.address,
+          amount,
+          decimals: preferred.usdc.decimals
+        });
+      }, 2, 1500); // 2 retries for faster UI
+    
+      // Execute escrow creation with retry mechanism
+      await executeWithRetry(async () => {
+        const escrow = new Contract(
+          NETWORKS.polygonAmoy.escrow.address,
+          ESCROW_ABI,
+          signer
+        );
+        const id = orderId || crypto.randomUUID();
+        const idBytes = encodeOrderId(id);
+        setOrderId(id);
+        setCryptoMsg("Creating escrow payment...");
+        await (await escrow.createPayment(idBytes, partner, amount)).wait();
+      }, 2, 1500);
+      
+      setCryptoMsg("Escrow created. Waiting for funds release.");
+      setResult({ ok: true, message: "Escrow payment created" });
+    } catch (e) {
+      console.error("Escrow creation error:", e);
+      let errorMessage = "Escrow creation error";
+      try {
+        // Handle JSON-RPC network errors specifically
+        if (e.code === -32603 || e.payload?.method === "eth_sendTransaction") {
+          errorMessage = "Network error: Transaction failed to submit. Try: 1) Wait and retry, 2) Switch network provider in MetaMask, 3) Check if you have enough MATIC for gas.";
+        } else if (e.reason) {
+          errorMessage = e.reason;
+        } else if (e.message) {
+          // Clean up JSON-RPC error messages
+          if (e.message.includes("Internal JSON-RPC error")) {
+            errorMessage = "Network provider issue: Please try switching network or retrying.";
+          } else if (e.message.includes("coalesce") || e.message.includes("reverted")) {
+            errorMessage = e.message.replace(/execution reverted:|coalesce:|Internal JSON-RPC error:/gi, "").trim();
+          } else {
+            errorMessage = e.message.replace(/execution reverted/gi, "").trim();
+          }
+        } else if (e.error?.error?.message) {
+          errorMessage = e.error.error.message;
+        }
+      } catch (parseError) {
+        errorMessage = "Unknown error during escrow creation";
+      }
+      setCryptoMsg(errorMessage);
+      setResult({ ok: false, message: errorMessage });
+    } finally {
+      setCryptoBusy(false);
+    }
+  };
+
+  const checkPaymentStatus = async () => {
+    if (!orderId) {
+      setCryptoMsg("Create an escrow payment first");
+      return;
+    }
+    try {
+      setCryptoBusy(true);
+      setCryptoMsg("Checking payment status...");
+      const { signer } = await connectWallet();
       const escrow = new Contract(
         NETWORKS.polygonAmoy.escrow.address,
         ESCROW_ABI,
         signer
       );
-      const id = orderId || crypto.randomUUID();
-      const idBytes = `0x${Buffer.from(id)
-        .toString("hex")
-        .slice(0, 64)
-        .padEnd(64, "0")}`;
-      setOrderId(id);
-      setCryptoMsg("Creating escrow payment...");
-      await (await escrow.createPayment(idBytes, partner, amount)).wait();
-      setCryptoMsg("Эскроу создан. Ожидает выпуска средств.");
-      setResult({ ok: true, message: "Эскроу-платёж создан" });
+      const idBytes = encodeOrderId(orderId);
+      
+      // Get payment details
+      const payment = await escrow.getPayment(idBytes);
+      console.log("Payment details:", payment);
+      
+      // Check if payment exists (has non-zero buyer)
+      if (payment.buyer === "0x0000000000000000000000000000000000000000") {
+        setCryptoMsg("Error: Payment not found. Check that the order was created correctly.");
+        return;
+      }
+      
+      const statusMap = {
+        0: "None",
+        1: "Pending", 
+        2: "Released",
+        3: "Refunded"
+      };
+      
+      // Convert status to number in case it's BigInt/string
+      const statusNumber = Number(payment.status);
+      const status = statusMap[statusNumber] || "Unknown";
+      console.log("Payment status check - raw:", payment.status, "converted:", statusNumber, "mapped:", status);
+      const currentAccount = await signer.getAddress();
+      
+      setCryptoMsg(`Status: ${status} (${statusNumber}) | Buyer: ${payment.buyer} | Your address: ${currentAccount} | Amount: ${payment.amount}`);
+      
+      // Check if current account can release
+      const canRelease = currentAccount.toLowerCase() === payment.buyer.toLowerCase();
+      const statusCheckResult = statusNumber === 1 ? "YES" : "NO";
+      const releaseCheckResult = canRelease ? "YES" : "NO";
+      setCryptoMsg(prev => prev + ` | Can release: ${releaseCheckResult} (Status Pending: ${statusCheckResult})`);
+      
     } catch (e) {
-      setCryptoMsg(e.shortMessage || e.message || "Escrow creation error");
-      setResult({ ok: false, message: "Escrow creation error" });
+      setCryptoMsg(e.shortMessage || e.message || "Status check error");
     } finally {
       setCryptoBusy(false);
     }
@@ -169,30 +328,97 @@ export default function Payment() {
 
   const onReleaseFunds = async () => {
     if (!orderId) {
-      setCryptoMsg("Сначала создайте эскроу-платёж");
+      setCryptoMsg("Create an escrow payment first");
       return;
     }
     try {
       setCryptoBusy(true);
-      setCryptoMsg("Выпуск средств из эскроу...");
+      setCryptoMsg("Releasing funds from escrow...");
       const { signer } = await connectWallet();
       const escrow = new Contract(
         NETWORKS.polygonAmoy.escrow.address,
         ESCROW_ABI,
         signer
       );
-      const idBytes = `0x${Buffer.from(orderId)
-        .toString("hex")
-        .slice(0, 64)
-        .padEnd(64, "0")}`;
-      await (await escrow.release(idBytes)).wait();
+      const idBytes = encodeOrderId(orderId);
+      
+      // Check payment status first
+      const payment = await escrow.getPayment(idBytes);
+      console.log("Payment before release:", payment);
+      
+      const currentAccount = await signer.getAddress();
+      
+      // Check if payment exists (has non-zero buyer)
+      if (payment.buyer === "0x0000000000000000000000000000000000000000") {
+        setCryptoMsg("Error: Payment not found. Make sure the payment was created and you're using the correct Order ID.");
+        setResult({ ok: false, message: "Payment not found" });
+        return;
+      }
+      
+      // Check if we can release (is buyer or is platform treasury)
+      if (payment.buyer.toLowerCase() !== currentAccount.toLowerCase()) {
+        setCryptoMsg(`Error: You cannot release these funds. Buyer: ${payment.buyer}, Your address: ${currentAccount}`);
+        setResult({ ok: false, message: "Not authorized to release funds" });
+        return;
+      }
+      
+      // Check payment status - ensure we convert BigInt/string to number
+      const paymentStatus = Number(payment.status);
+      console.log("Payment status raw:", payment.status, "converted:", paymentStatus);
+      
+      if (paymentStatus !== 1) { // 1 = Pending
+        const statusMap = { 0: "None", 1: "Pending", 2: "Released", 3: "Refunded" };
+        const currentStatusName = statusMap[paymentStatus] || "Unknown";
+        setCryptoMsg(`Error: Invalid payment status. Current status: ${currentStatusName}. Required: Pending (status 1).`);
+        setResult({ ok: false, message: `Payment not in Pending status. Current status: ${currentStatusName}` });
+        return;
+      }
+      
+      // Execute release with retry mechanism
+      await executeWithRetry(async () => {
+        await (await escrow.release(idBytes)).wait();
+      }, 2, 1500);
+      
+      // Check payment status after release
+      const paymentAfter = await escrow.getPayment(idBytes);
+      console.log("Payment after release:", paymentAfter);
+      
       setCryptoMsg(
-        "Средства успешно распределены: 40% партнёру, 40% платформе, 20% городу"
+        "Funds successfully distributed: 40% to partner, 40% to platform, 20% to city"
       );
-      setResult({ ok: true, message: "Средства выпущены и распределены!" });
+      setResult({ ok: true, message: "Funds released and distributed!" });
     } catch (e) {
-      setCryptoMsg(e.shortMessage || e.message || "Ошибка выпуска средств");
-      setResult({ ok: false, message: "Ошибка выпуска средств" });
+      console.error("Release error:", e);
+      let errorMessage = "Error releasing funds";
+      try {
+        // Handle blockchain errors without triggering coalesce errors
+        if (e.code === -32603 || e.payload?.method === "eth_sendTransaction") {
+          errorMessage = "Network error: Transaction failed to submit. Try: 1) Wait and retry, 2) Switch network provider in MetaMask, 3) Check if you have enough MATIC for gas.";
+        } else if (e.reason) {
+          errorMessage = e.reason === "not authorized" ? 
+            "Not authorized to release funds. Use the same wallet that created the payment." :
+            e.reason === "not pending" ?
+            "Payment not in pending status." :
+            e.reason;
+        } else if (e.message) {
+          const cleanMessage = e.message.replace(/execution reverted:|coalesce:/gi, "").trim();
+          if (e.message.includes("Internal JSON-RPC error")) {
+            errorMessage = "Network error: Please try again or check your network connection.";
+          } else if (cleanMessage.includes("not authorized")) {
+            errorMessage = "Not authorized to release funds. Use the same wallet that created the payment.";
+          } else if (cleanMessage.includes("not pending")) {
+            errorMessage = "Payment not in pending status.";
+          } else {
+            errorMessage = cleanMessage;
+          }
+        } else if (e.error?.error?.message) {
+          errorMessage = e.error.error.message;
+        }
+      } catch (parseError) {
+        errorMessage = "Unknown error during funds release";
+      }
+      setCryptoMsg(errorMessage);
+      setResult({ ok: false, message: errorMessage });
     } finally {
       setCryptoBusy(false);
     }
@@ -209,27 +435,6 @@ export default function Payment() {
     return new Contract(addr, ESCROW_ABI, signer)[method];
   };
 
-  const onRelease = async () => {
-    if (!orderId) {
-      alert("Enter Order ID");
-      return;
-    }
-    try {
-      setCryptoBusy(true);
-      setCryptoMsg("Releasing funds...");
-      const fn = await callEscrow("release");
-      const idBytes = `0x${Buffer.from(orderId)
-        .toString("hex")
-        .slice(0, 64)
-        .padEnd(64, "0")}`;
-      await (await fn(idBytes)).wait();
-      setCryptoMsg("Funds released from escrow");
-    } catch (e) {
-      setCryptoMsg(e.shortMessage || e.message || "Release error");
-    } finally {
-      setCryptoBusy(false);
-    }
-  };
 
   const onRefund = async () => {
     if (!orderId) {
@@ -238,16 +443,48 @@ export default function Payment() {
     }
     try {
       setCryptoBusy(true);
-      setCryptoMsg("Refunding...");
+      setCryptoMsg("Refunding payment to buyer...");
+      // NOTE: Only platform treasury wallet can refund payments
+      // This transfers all escrow funds back to the buyer
       const fn = await callEscrow("refund");
-      const idBytes = `0x${Buffer.from(orderId)
-        .toString("hex")
-        .slice(0, 64)
-        .padEnd(64, "0")}`;
-      await (await fn(idBytes)).wait();
-      setCryptoMsg("Funds refunded to buyer");
+      const idBytes = encodeOrderId(orderId);
+      
+      // Use retry mechanism for better success rate
+      await executeWithRetry(async () => {
+        await (await fn(idBytes)).wait();
+      }, 2, 1500);
+      
+      setCryptoMsg("Funds successfully refunded to buyer");
+      setResult({ ok: true, message: "Refund completed successfully" });
     } catch (e) {
-      setCryptoMsg(e.shortMessage || e.message || "Refund error");
+      console.error("Refund error:", e);
+      let errorMessage = "Refund error";
+      try {
+        // Handle JSON-RPC network errors specifically
+        if (e.code === -32603 || e.payload?.method === "eth_sendTransaction") {
+          errorMessage = "Network error: Refund failed to submit. Try: 1) Wait and retry, 2) Switch network provider in MetaMask, 3) Check if you have enough MATIC for gas.";
+        } else if (e.reason) {
+          if (e.reason === "only platform") {
+            errorMessage = "Authorization error: Only platform treasury can refund payments. Check that you are signed in with the platform account.";
+          } else {
+            errorMessage = e.reason;
+          }
+        } else if (e.message) {
+          if (e.message.includes("Internal JSON-RPC error")) {
+            errorMessage = "Network error: Please try again or check your network connection.";
+          } else if (e.message.includes("only platform")) {
+            errorMessage = "Authorization error: Only platform treasury can refund payments. Make sure you are using the platform wallet address: 0x5Fa6460D804d2833f302a58DEbef946C6B108Ba3";
+          } else {
+            errorMessage = e.message.replace(/execution reverted:|coalesce:/gi, "").trim();
+          }
+        } else if (e.error?.error?.message) {
+          errorMessage = e.error.error.message;
+        }
+      } catch (parseError) {
+        errorMessage = "Unknown error during refund";
+      }
+      setCryptoMsg(errorMessage);
+      setResult({ ok: false, message: errorMessage });
     } finally {
       setCryptoBusy(false);
     }
@@ -310,7 +547,7 @@ export default function Payment() {
     }
     try {
       await new Promise((resolve) => setTimeout(resolve, 1000));
-      setResult({ ok: true, message: "Оплата прошла успешно" });
+      setResult({ ok: true, message: "Payment completed successfully" });
       setForm({
         fullName: "",
         email: "",
@@ -601,21 +838,21 @@ export default function Payment() {
             </button>
             <button
               type="button"
-              onClick={onReleaseFunds}
+              onClick={checkPaymentStatus}
               disabled={cryptoBusy || !orderId}
-              style={{ flex: 1, background: "#dc2626", color: "#fff" }}
+              style={{ flex: 1, background: "#059669", color: "#fff" }}
             >
-              {cryptoBusy ? "Releasing..." : "Release Funds"}
+              Check Status
             </button>
           </div>
           <div style={{ display: "flex", gap: 12 }}>
             <button
               type="button"
-              onClick={onRelease}
-              disabled={cryptoBusy}
-              style={{ flex: 1, background: "#6b21a8", color: "#fff" }}
+              onClick={onReleaseFunds}
+              disabled={cryptoBusy || !orderId}
+              style={{ flex: 1, background: "#dc2626", color: "#fff" }}
             >
-              Release funds
+              Release Funds
             </button>
             <button
               type="button"

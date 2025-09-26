@@ -7,6 +7,10 @@ export const NETWORKS = {
     chainId: 0x13882, // 80002
     name: "Polygon Amoy",
     rpcUrl: "https://rpc-amoy.polygon.technology",
+    backupRpcUrls: [
+      "https://polygon-amoy.drpc.org",
+      "https://amoy.gateway.rpc.thirdweb.com"
+    ],
     explorer: "https://www.oklink.com/amoy",
     usdc: {
       address: "0x8Da11E8Bbf81b4696F68e0FF89fD11C25BB11Cd4",
@@ -20,6 +24,8 @@ export const NETWORKS = {
       // - _token: USDC address (0x8Da11E8Bbf81b4696F68e0FF89fD11C25BB11Cd4)
       // - _platformTreasury: Your platform wallet address
       // - _cityTreasury: City treasury wallet address
+      platformTreasury: "0x5Fa6460D804d2833f302a58DEbef946C6B108Ba3", // UPDATE THIS: Your platform treasury address
+      cityTreasury: "0x5d26F935646b4A48E1bFC74328e6875F6eD0afA7", // UPDATE THIS: Your city treasury address
     },
   },
   sepolia: {
@@ -59,7 +65,23 @@ export async function getProvider() {
 
 export async function connectWallet() {
   const provider = await getProvider();
-  await provider.send("eth_requestAccounts", []);
+  
+  // Request accounts with retry logic
+  let retries = 3;
+  while (retries > 0) {
+    try {
+      await provider.send("eth_requestAccounts", []);
+      break;
+    } catch (error) {
+      retries--;
+      if (retries === 0 || error.code === 4001) { // User rejected
+        throw error;
+      }
+      // Retry for network issues
+      await new Promise(resolve => setTimeout(resolve, 1000));
+    }
+  }
+  
   const signer = await provider.getSigner();
   const account = await signer.getAddress();
   const network = await provider.getNetwork();
@@ -74,14 +96,58 @@ export function formatAmountToUnits(amountStr, decimals) {
 
 export async function erc20Transfer({ signer, token, to, amount, decimals }) {
   const contract = new Contract(token, ERC20_ABI, signer);
-  const tx = await contract.transfer(to, amount);
-  return await tx.wait();
+  
+  try {
+    // Estimate gas and add 20% buffer for network congestion  
+    const estimatedGas = await contract.transfer.estimateGas(to, amount);
+    const gasLimit = (estimatedGas * 120n) / 100n; // Add 20% buffer
+    
+    // Send transaction with increased gas limit
+    const tx = await contract.transfer(to, amount, { 
+      gasLimit 
+    });
+    return await tx.wait();
+  } catch (transferError) {
+    // Fallback - retry without extra gas estimation
+    console.warn("Gas estimation failed, retrying with default gas:", transferError);
+    try {
+      const tx = await contract.transfer(to, amount, {
+        gasLimit: 60000n  // Higher default gas limit for transfer
+      });
+      return await tx.wait();
+    } catch (fallbackError) {
+      console.error("Transfer transaction failed:", fallbackError);
+      throw fallbackError;
+    }
+  }
 }
 
 export async function erc20Approve({ signer, token, spender, amount, decimals }) {
   const contract = new Contract(token, ERC20_ABI, signer);
-  const tx = await contract.approve(spender, amount);
-  return await tx.wait();
+  
+  try {
+    // Estimate gas and add 20% buffer for network congestion
+    const estimatedGas = await contract.approve.estimateGas(spender, amount);
+    const gasLimit = (estimatedGas * 120n) / 100n; // Add 20% buffer
+    
+    // Send transaction with increased gas limit
+    const tx = await contract.approve(spender, amount, { 
+      gasLimit 
+    });
+    return await tx.wait();
+  } catch (approveError) {
+    // Fallback - retry without extra gas estimation
+    console.warn("Gas estimation failed, retrying with default gas:", approveError);
+    try {
+      const tx = await contract.approve(spender, amount, {
+        gasLimit: 100000n  // Higher default gas limit for approve
+      });
+      return await tx.wait();
+    } catch (fallbackError) {
+      console.error("Approve transaction failed:", fallbackError);
+      throw fallbackError;
+    }
+  }
 }
 
 export async function erc20BalanceOf({ provider, token, address }) {
