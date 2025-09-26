@@ -1,5 +1,51 @@
 # Serbia-transport
 
+## Getting Started
+
+### Prerequisites
+
+- Node.js (v18 or later)
+- npm or yarn package manager
+- Browser with Web3 wallet (MetaMask recommended)
+
+### Installation & Setup
+
+1. **Clone the repository**
+
+   ```bash
+   git clone [your-repo-link]
+   cd mobility-mvp
+   ```
+
+2. **Install dependencies**
+
+   ```bash
+   npm install
+   ```
+
+3. **Configure Blockchain (Optional)**
+
+   - Copy contents from `contracts/Escrow.sol` to [Remix IDE](https://remix.ethereum.org)
+   - Deploy to Polygon Amoy testnet via MetaMask
+   - Update `src/crypto.js` with your deployed escrow contract address
+
+4. **Start development server**
+
+   ```bash
+   npm run dev
+   ```
+
+5. **Open in browser**
+   - Navigate to `http://localhost:5173`
+   - The app will load in development mode with hot reload
+
+## Technology Stack
+
+- **Frontend**: React 19, Vite, React-Router
+- **Mapping**: React-Leaflet, OpenStreetMap
+- **Blockchain**: Ethers.js, Web3Modal
+- **State Management**: React Hooks
+
 ## Blockchain payments (testnet)
 
 This project includes a simple crypto checkout and escrow flow.
@@ -38,7 +84,9 @@ This project includes a simple crypto checkout and escrow flow.
    - Press "Pay to ESCROW" to create an escrow payment (approve + createPayment). Optionally set an Order ID.
 6. Use "Release funds" or "Refund" with the same Order ID to settle.
 
-Notes:
+### Development Notes
 
-- Addresses and tokens are for demo. Replace with your own for production.
-- Consider adding KYC/DID proofs, indexing, price oracles, and formal audits before mainnet.
+- All transport data is simulated using Belgrade-specific mock data
+- OSRM routing requires stable internet connection for real-time calculations
+- Blockchain features require testnet tokens (Polygon Amoy MATIC + USDC)
+- DID authentication uses localStorage - data persists in browser session only
