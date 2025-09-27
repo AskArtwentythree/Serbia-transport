@@ -13,7 +13,7 @@
 1. **Clone the repository**
 
    ```bash
-   git clone [your-repo-link]
+   git clone https://github.com/AskArtwentythree/Serbia-transport.git
    cd mobility-mvp
    ```
 
